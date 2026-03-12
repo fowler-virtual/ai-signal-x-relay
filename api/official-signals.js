@@ -16,6 +16,9 @@ const DEFAULT_HANDLES = [
 
 function json(res, status, body) {
   res.statusCode = status;
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(body));
 }
@@ -99,6 +102,15 @@ function mapPostToSignal(tweet, user) {
 }
 
 export default async function handler(req, res) {
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.end();
+    return;
+  }
+
   if (req.method !== 'GET') {
     return json(res, 405, {
       success: false,
