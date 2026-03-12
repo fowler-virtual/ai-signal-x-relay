@@ -89,7 +89,7 @@ function buildTweetText(body, meta) {
 }
 
 function buildXUrl(endpoint) {
-  const normalized = endpoint.startsWith('http') ? endpoint : `https://api.x.com${endpoint}`;
+  const normalized = endpoint.startsWith('http') ? endpoint : `https://api.twitter.com${endpoint}`;
   return normalized;
 }
 
@@ -228,17 +228,32 @@ export default async function handler(req, res) {
   };
 
   try {
-    const response = await fetch(url, {
-      method: payload.method,
-      headers,
-      body: JSON.stringify(body),
-    });
-    const text = await response.text();
-    let record = {};
-    try {
-      record = text ? JSON.parse(text) : {};
-    } catch {
-      record = { raw: text };
+    const executeRequest = async requestUrl => {
+      const requestAuth = oauth.authorize({ url: requestUrl, method: payload.method, data: body }, token);
+      const requestHeaders = {
+        ...oauth.toHeader(requestAuth),
+        'Content-Type': 'application/json',
+      };
+      const response = await fetch(requestUrl, {
+        method: payload.method,
+        headers: requestHeaders,
+        body: JSON.stringify(body),
+      });
+      const text = await response.text();
+      let record = {};
+      try {
+        record = text ? JSON.parse(text) : {};
+      } catch {
+        record = { raw: text };
+      }
+      return { response, record };
+    };
+
+    let { response, record } = await executeRequest(url);
+
+    if (!response.ok && response.status === 401 && url.includes('api.twitter.com')) {
+      const fallbackUrl = endpoint => endpoint.startsWith('http') ? endpoint : `https://api.x.com${endpoint}`;
+      ({ response, record } = await executeRequest(fallbackUrl(payload.endpoint)));
     }
 
     if (response.ok) {
