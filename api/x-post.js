@@ -150,8 +150,10 @@ export default async function handler(req, res) {
     });
   }
 
-  const relayToken = req.headers['x-relay-token'];
-  if (!process.env.RELAY_TOKEN || relayToken !== process.env.RELAY_TOKEN) {
+  const relayTokenHeader = req.headers['x-relay-token'];
+  const relayToken = Array.isArray(relayTokenHeader) ? relayTokenHeader[0] : relayTokenHeader;
+  const expectedRelayToken = process.env.RELAY_TOKEN?.trim();
+  if (!expectedRelayToken || typeof relayToken !== 'string' || relayToken.trim() !== expectedRelayToken) {
     return json(res, 401, {
       success: false,
       error_code: 'unauthorized',
