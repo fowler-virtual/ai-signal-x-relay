@@ -77,3 +77,42 @@ vercel dev
 3. Deploy.
 4. Copy the deployment URL into `bird-dashboard` as `VITE_X_POST_RELAY_URL`.
 5. Copy `RELAY_TOKEN` into `bird-dashboard` as `VITE_X_POST_RELAY_TOKEN`.
+
+## Official signal feed
+
+- `GET /api/official-signals`
+- Uses the relay's X app credentials to fetch recent posts from official AI accounts.
+- Optional env:
+  - `X_OFFICIAL_SIGNAL_HANDLES` as a comma-separated list like `OpenAI,AnthropicAI,claudeai`
+
+Response shape:
+
+```json
+{
+  "success": true,
+  "source": "official",
+  "count": 10,
+  "items": [
+    {
+      "id": "official-123",
+      "title": "tweet text",
+      "text": "tweet text",
+      "url": "https://x.com/OpenAI/status/123",
+      "canonicalUrl": "https://x.com/OpenAI/status/123",
+      "source": {
+        "kind": "official",
+        "name": "OpenAI",
+        "handle": "@OpenAI"
+      },
+      "published_at": "2026-03-12T10:00:00.000Z",
+      "engagement": {
+        "score": 120,
+        "likes": 100,
+        "reposts": 10,
+        "replies": 5,
+        "quotes": 5
+      }
+    }
+  ]
+}
+```
