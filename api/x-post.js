@@ -136,7 +136,14 @@ function parseXFailure(status, record) {
     error_code: errorCode,
     error_message: errorMessage,
     retryable: status === 429 || status >= 500,
-    raw_response: record,
+    raw_response: {
+      status,
+      title,
+      detail,
+      first_error_code: firstError?.code ?? null,
+      first_error_message: typeof firstError?.message === 'string' ? firstError.message : null,
+      response: record,
+    },
   };
 }
 
