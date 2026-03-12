@@ -18,6 +18,15 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+function maskToken(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const head = trimmed.slice(0, 6);
+  const tail = trimmed.slice(-4);
+  return `${head}…${tail} (${trimmed.length})`;
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let raw = '';
@@ -159,6 +168,10 @@ export default async function handler(req, res) {
       error_code: 'unauthorized',
       error_message: 'Relay token is invalid',
       retryable: false,
+      debug: {
+        received: maskToken(relayToken),
+        expected: maskToken(expectedRelayToken),
+      },
     });
   }
 
