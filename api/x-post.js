@@ -229,7 +229,7 @@ export default async function handler(req, res) {
 
   try {
     const executeRequest = async requestUrl => {
-      const requestAuth = oauth.authorize({ url: requestUrl, method: payload.method, data: body }, token);
+      const requestAuth = oauth.authorize({ url: requestUrl, method: payload.method }, token);
       const requestHeaders = {
         ...oauth.toHeader(requestAuth),
         'Content-Type': 'application/json',
