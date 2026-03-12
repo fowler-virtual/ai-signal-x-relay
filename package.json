@@ -1,0 +1,13 @@
+{
+  "name": "ai-signal-x-relay",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "lint": "node -e \"console.log('no lint configured')\""
+  },
+  "dependencies": {
+    "oauth-1.0a": "^2.2.6"
+  }
+}
