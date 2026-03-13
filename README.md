@@ -5,6 +5,8 @@ Minimal Vercel relay for `bird-dashboard` X posting.
 ## Route
 
 - `POST /api/x-post`
+- `GET /api/official-signals`
+- `GET /api/curator-signals`
 
 ## Required Vercel Environment Variables
 
@@ -116,3 +118,12 @@ Response shape:
   ]
 }
 ```
+
+## Curator signal feed
+
+- `GET /api/curator-signals`
+- Uses the relay's X app credentials to fetch recent posts from curator/commentary accounts.
+- Optional env:
+  - `X_CURATOR_SIGNAL_HANDLES` as a comma-separated list like `rowancheung,TheRundownAI,swyx`
+
+Response shape is the same as `official-signals`, but `source.kind` is `curator`.
