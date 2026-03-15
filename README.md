@@ -1,6 +1,11 @@
 # ai-signal-x-relay
 
-Minimal Vercel relay for `bird-dashboard` X posting.
+Minimal Vercel relay for `bird-dashboard`.
+
+Current role:
+- `POST /api/x-post` for live X posting
+- `GET /api/official-signals` for low-cost official research feeds
+- `GET /api/curator-signals` for low-cost curator research feeds
 
 ## Route
 
@@ -15,6 +20,32 @@ Minimal Vercel relay for `bird-dashboard` X posting.
 - `X_CONSUMER_SECRET`
 - `X_ACCESS_TOKEN`
 - `X_ACCESS_TOKEN_SECRET`
+
+These X credentials are required only for `POST /api/x-post`.
+
+The research feed routes do not require X API credentials when using the current RSS/public-feed path.
+
+## Optional Vercel Environment Variables
+
+- `X_SIGNAL_RSS_BASE_URL`
+  - Base RSS feed provider used for `official-signals` and `curator-signals`
+  - Default: `https://rsshub.app/twitter/user`
+
+- `X_OFFICIAL_SIGNAL_HANDLES`
+  - Comma-separated X handles for official sources
+  - Example: `OpenAI,OpenAIDevs,AnthropicAI`
+
+- `X_CURATOR_SIGNAL_HANDLES`
+  - Comma-separated X handles for curator/commentary sources
+  - Example: `rowancheung,TheRundownAI,swyx`
+
+- `X_OFFICIAL_SIGNAL_HANDLES_FEEDS`
+  - Optional explicit feed URLs for official sources
+  - If set, these override handle-based RSS URL construction
+
+- `X_CURATOR_SIGNAL_HANDLES_FEEDS`
+  - Optional explicit feed URLs for curator sources
+  - If set, these override handle-based RSS URL construction
 
 ## Request contract
 
@@ -83,9 +114,11 @@ vercel dev
 ## Official signal feed
 
 - `GET /api/official-signals`
-- Uses the relay's X app credentials to fetch recent posts from official AI accounts.
+- Uses public RSS/public-feed ingestion to fetch recent posts from official AI accounts.
 - Optional env:
   - `X_OFFICIAL_SIGNAL_HANDLES` as a comma-separated list like `OpenAI,AnthropicAI,claudeai`
+  - `X_OFFICIAL_SIGNAL_HANDLES_FEEDS` as explicit feed URLs when handle-based construction is not desirable
+  - `X_SIGNAL_RSS_BASE_URL` to override the default RSS provider
 
 Response shape:
 
@@ -103,16 +136,16 @@ Response shape:
       "canonicalUrl": "https://x.com/OpenAI/status/123",
       "source": {
         "kind": "official",
-        "name": "OpenAI",
+        "name": "@OpenAI",
         "handle": "@OpenAI"
       },
       "published_at": "2026-03-12T10:00:00.000Z",
       "engagement": {
-        "score": 120,
-        "likes": 100,
-        "reposts": 10,
-        "replies": 5,
-        "quotes": 5
+        "score": 0,
+        "likes": 0,
+        "reposts": 0,
+        "replies": 0,
+        "quotes": 0
       }
     }
   ]
@@ -122,8 +155,10 @@ Response shape:
 ## Curator signal feed
 
 - `GET /api/curator-signals`
-- Uses the relay's X app credentials to fetch recent posts from curator/commentary accounts.
+- Uses public RSS/public-feed ingestion to fetch recent posts from curator/commentary accounts.
 - Optional env:
   - `X_CURATOR_SIGNAL_HANDLES` as a comma-separated list like `rowancheung,TheRundownAI,swyx`
+  - `X_CURATOR_SIGNAL_HANDLES_FEEDS` as explicit feed URLs when handle-based construction is not desirable
+  - `X_SIGNAL_RSS_BASE_URL` to override the default RSS provider
 
 Response shape is the same as `official-signals`, but `source.kind` is `curator`.

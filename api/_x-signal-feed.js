@@ -1,6 +1,3 @@
-import crypto from 'node:crypto';
-import OAuth from 'oauth-1.0a';
-
 function json(res, status, body) {
   res.statusCode = status;
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -8,47 +5,6 @@ function json(res, status, body) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(body));
-}
-
-function createOAuthClient() {
-  return new OAuth({
-    consumer: {
-      key: process.env.X_CONSUMER_KEY,
-      secret: process.env.X_CONSUMER_SECRET,
-    },
-    signature_method: 'HMAC-SHA1',
-    hash_function(baseString, key) {
-      return crypto.createHmac('sha1', key).update(baseString).digest('base64');
-    },
-  });
-}
-
-function buildHeaders(url, method = 'GET') {
-  const oauth = createOAuthClient();
-  const token = {
-    key: process.env.X_ACCESS_TOKEN,
-    secret: process.env.X_ACCESS_TOKEN_SECRET,
-  };
-  const auth = oauth.authorize({ url, method }, token);
-  return oauth.toHeader(auth);
-}
-
-async function xGet(url) {
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: buildHeaders(url, 'GET'),
-  });
-  const text = await response.text();
-  let body = {};
-  try {
-    body = text ? JSON.parse(text) : {};
-  } catch {
-    body = { raw: text };
-  }
-  if (!response.ok) {
-    throw new Error(body?.detail || body?.title || `X GET failed: ${response.status}`);
-  }
-  return body;
 }
 
 function getHandles(envKey, defaults) {
@@ -60,53 +16,102 @@ function getHandles(envKey, defaults) {
   return handles.length > 0 ? handles : defaults;
 }
 
-function mapPostToSignal(tweet, user, sourceKind) {
-  const username = user?.username || 'unknown';
-  const name = user?.name || username;
-  const id = tweet?.id || `${username}-${Date.now()}`;
-  const text = typeof tweet?.text === 'string' ? tweet.text.replace(/\s+/g, ' ').trim() : '';
-  const quotedId = Array.isArray(tweet?.referenced_tweets)
-    ? tweet.referenced_tweets.find(item => item?.type === 'quoted')?.id
-    : undefined;
-  const retweetedId = Array.isArray(tweet?.referenced_tweets)
-    ? tweet.referenced_tweets.find(item => item?.type === 'retweeted')?.id
-    : undefined;
-  const repliedId = Array.isArray(tweet?.referenced_tweets)
-    ? tweet.referenced_tweets.find(item => item?.type === 'replied_to')?.id
-    : undefined;
-  const canonicalUrl = `https://x.com/${username}/status/${id}`;
-  const referencedUrl = quotedId
-    ? `https://x.com/i/web/status/${quotedId}`
-    : retweetedId
-      ? `https://x.com/i/web/status/${retweetedId}`
-      : repliedId
-        ? `https://x.com/i/web/status/${repliedId}`
-        : undefined;
+function getFeedUrls(handlesEnvKey, defaults) {
+  const explicitFeeds = process.env[`${handlesEnvKey}_FEEDS`] || '';
+  const feedUrls = explicitFeeds
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+
+  if (feedUrls.length > 0) return feedUrls;
+
+  const baseUrl = (process.env.X_SIGNAL_RSS_BASE_URL || 'https://rsshub.app/twitter/user').replace(/\/$/, '');
+  return getHandles(handlesEnvKey, defaults).map(handle => `${baseUrl}/${encodeURIComponent(handle)}`);
+}
+
+function decodeHtml(text) {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function stripHtml(text) {
+  return decodeHtml(text.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+function getTagContent(block, tagName) {
+  const match = block.match(new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, 'i'));
+  return match?.[1]?.trim() || '';
+}
+
+function parseRssItems(xml) {
+  const itemBlocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].map(match => match[1]);
+  return itemBlocks.map(block => {
+    const title = stripHtml(getTagContent(block, 'title'));
+    const link = decodeHtml(getTagContent(block, 'link'));
+    const pubDate = getTagContent(block, 'pubDate');
+    const description = stripHtml(getTagContent(block, 'description'));
+    return { title, link, pubDate, description };
+  }).filter(item => item.link && item.title);
+}
+
+function normalizeSourceName(url, fallbackKind) {
+  try {
+    const pathname = new URL(url).pathname;
+    const lastSegment = pathname.split('/').filter(Boolean).at(-1);
+    return lastSegment ? `@${decodeURIComponent(lastSegment)}` : fallbackKind;
+  } catch {
+    return fallbackKind;
+  }
+}
+
+function buildSignal(item, feedUrl, sourceKind) {
+  const canonicalUrl = item.link;
+  const title = item.title.replace(/\s+/g, ' ').trim();
+  const text = item.description || title;
+  const idMatch = canonicalUrl.match(/status\/(\d+)/i);
+  const id = idMatch?.[1] || `${sourceKind}-${Buffer.from(canonicalUrl).toString('base64').slice(0, 12)}`;
 
   return {
     id: `${sourceKind}-${id}`,
-    title: text.slice(0, 160),
+    title: title.slice(0, 160),
     text,
     url: canonicalUrl,
     canonicalUrl,
-    referencedUrl,
+    referencedUrl: undefined,
     source: {
       kind: sourceKind,
-      name,
-      handle: `@${username}`,
+      name: normalizeSourceName(feedUrl, sourceKind),
+      handle: normalizeSourceName(feedUrl, sourceKind),
     },
-    published_at: tweet?.created_at || new Date().toISOString(),
+    published_at: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
     tags: [],
     engagement: {
-      score: Number(tweet?.public_metrics?.like_count || 0)
-        + Number(tweet?.public_metrics?.retweet_count || 0)
-        + Number(tweet?.public_metrics?.quote_count || 0),
-      likes: Number(tweet?.public_metrics?.like_count || 0),
-      reposts: Number(tweet?.public_metrics?.retweet_count || 0),
-      replies: Number(tweet?.public_metrics?.reply_count || 0),
-      quotes: Number(tweet?.public_metrics?.quote_count || 0),
+      score: 0,
+      likes: 0,
+      reposts: 0,
+      replies: 0,
+      quotes: 0,
     },
   };
+}
+
+async function fetchFeed(url) {
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'User-Agent': 'bird-dashboard-ai-updates/1.0',
+      'Accept': 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
+    },
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Feed fetch failed (${response.status}): ${url}`);
+  }
+  return text;
 }
 
 export async function handleSignalFeed(req, res, options) {
@@ -126,34 +131,15 @@ export async function handleSignalFeed(req, res, options) {
     });
   }
 
-  const missing = [
-    'X_CONSUMER_KEY',
-    'X_CONSUMER_SECRET',
-    'X_ACCESS_TOKEN',
-    'X_ACCESS_TOKEN_SECRET',
-  ].filter(key => !process.env[key]);
-
-  if (missing.length > 0) {
-    return json(res, 500, {
-      success: false,
-      error: 'missing_env',
-      detail: missing,
-    });
-  }
-
   try {
-    const handles = getHandles(options.handlesEnvKey, options.defaultHandles);
-    const userLookupUrl = `https://api.x.com/2/users/by?usernames=${encodeURIComponent(handles.join(','))}&user.fields=name,username`;
-    const userLookup = await xGet(userLookupUrl);
-    const users = Array.isArray(userLookup?.data) ? userLookup.data : [];
-
+    const feedUrls = getFeedUrls(options.handlesEnvKey, options.defaultHandles);
     const allSignals = [];
-    for (const user of users) {
-      const tweetsUrl = `https://api.x.com/2/users/${user.id}/tweets?max_results=5&exclude=retweets,replies&tweet.fields=created_at,public_metrics,referenced_tweets`;
-      const tweetsResponse = await xGet(tweetsUrl);
-      const tweets = Array.isArray(tweetsResponse?.data) ? tweetsResponse.data : [];
-      for (const tweet of tweets) {
-        allSignals.push(mapPostToSignal(tweet, user, options.sourceKind));
+
+    for (const feedUrl of feedUrls) {
+      const xml = await fetchFeed(feedUrl);
+      const items = parseRssItems(xml).slice(0, 5);
+      for (const item of items) {
+        allSignals.push(buildSignal(item, feedUrl, options.sourceKind));
       }
     }
 
@@ -168,7 +154,7 @@ export async function handleSignalFeed(req, res, options) {
   } catch (error) {
     return json(res, 502, {
       success: false,
-      error: 'x_fetch_failed',
+      error: 'signal_fetch_failed',
       detail: error instanceof Error ? error.message : 'Unknown error',
     });
   }
